@@ -1,0 +1,6 @@
+{
+  "name": "Reina Valera 1960",
+  "description": "Una hermosa aplicación de la Biblia Reina Valera 1960, con lectura del Antiguo y Nuevo Testamento, buscador avanzado, notas de texto y voz, citas guardadas y opciones de personalización de lectura.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
