@@ -1,5 +1,9 @@
 # Changelog - Biblia Reina Valera 1960 Devocional
 
+## [1.1.1] - 2024-05-21
+### Added
+- **Versión en Créditos:** Visualización de la versión actual de la App al final de la pantalla de créditos.
+
 ## [1.1.0] - 2024-05-21
 ### Added
 - **Navegación Táctil:** Implementación de gestos de deslizamiento (swipe) entre capítulos.

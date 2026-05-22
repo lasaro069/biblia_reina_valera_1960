@@ -2095,6 +2095,16 @@ fun CreditsScreen(viewModel: BibleViewModel) {
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                Text(
+                    text = "Versión 1.1.1",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
+                )
             }
         }
     }
