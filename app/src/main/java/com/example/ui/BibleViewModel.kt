@@ -34,6 +34,8 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
     private val audioRecorderPlayer = AudioRecorderPlayer(application)
     var isRecording by mutableStateOf(false)
         private set
+    var isPaused by mutableStateOf(false)
+        private set
     var currentRecordedPath by mutableStateOf<String?>(null)
         private set
     var activePlayingNoteId by mutableStateOf<Int?>(null)
@@ -42,7 +44,8 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
     // --- Selection and View States ---
     var selectedBook by mutableStateOf(BibleData.books.first()) // Default to Génesis
     var selectedChapter by mutableStateOf(1) // Default to Chapter 1
-    
+    var selectedVerse by mutableStateOf<Int?>(null) // Target verse to scroll to
+
     // --- Reader Settings (Persistent) ---
     private var _readerFontSizeSp by mutableStateOf(prefs.getFloat("font_size", 20f))
     var readerFontSizeSp: Float
@@ -132,13 +135,15 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // --- Bible Reading Navigation Helpers ---
-    fun selectBookAndChapter(book: BibleBook, chapter: Int) {
+    fun selectBookAndChapter(book: BibleBook, chapter: Int, verse: Int? = null) {
         selectedBook = book
         selectedChapter = chapter.coerceIn(1, book.chapters)
+        selectedVerse = verse
         navigateTo("lectura")
     }
 
     fun navigateNextChapter() {
+        selectedVerse = null
         val nextCh = selectedChapter + 1
         if (nextCh <= selectedBook.chapters) {
             selectedChapter = nextCh
@@ -153,6 +158,7 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun navigatePrevChapter() {
+        selectedVerse = null
         val prevCh = selectedChapter - 1
         if (prevCh >= 1) {
             selectedChapter = prevCh
@@ -173,12 +179,28 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
         if (path != null) {
             currentRecordedPath = path
             isRecording = true
+            isPaused = false
+        }
+    }
+
+    fun pauseRecordingVoice() {
+        if (isRecording && !isPaused) {
+            audioRecorderPlayer.pauseRecording()
+            isPaused = true
+        }
+    }
+
+    fun resumeRecordingVoice() {
+        if (isRecording && isPaused) {
+            audioRecorderPlayer.resumeRecording()
+            isPaused = false
         }
     }
 
     fun stopRecordingVoiceAndSave(title: String) {
         if (!isRecording) return
         isRecording = false
+        isPaused = false
         val duration = audioRecorderPlayer.stopRecording()
         val path = currentRecordedPath
         if (path != null) {
@@ -214,11 +236,12 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // --- OCR/Text Note Operations ---
-    fun addUserNote(title: String, content: String, linkedScripture: String? = null) {
+    fun saveUserNote(id: Int = 0, title: String, content: String, linkedScripture: String? = null) {
         viewModelScope.launch {
             val noteTitle = title.ifBlank { "Reflexión Bíblica" }
             repository.insertUserNote(
                 UserNote(
+                    id = id,
                     title = noteTitle,
                     content = content,
                     linkedScripture = linkedScripture,

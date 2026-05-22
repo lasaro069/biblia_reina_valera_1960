@@ -93,6 +93,10 @@ fun BibleApp(viewModel: BibleViewModel) {
     var inputNoteContent by remember { mutableStateOf("") }
     var inputLinkedScripture by remember { mutableStateOf("") }
     var showAddNoteDialog by remember { mutableStateOf(false) }
+    var editingNoteId by remember { mutableIntStateOf(0) }
+    var showViewNoteDialog by remember { mutableStateOf(false) }
+    var noteToView by remember { mutableStateOf<UserNote?>(null) }
+    var showScripturePickerInNote by remember { mutableStateOf(false) }
     var expandableFabActive by remember { mutableStateOf(false) }
 
     // Audio recording popup controller
@@ -105,24 +109,18 @@ fun BibleApp(viewModel: BibleViewModel) {
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            viewModel.startRecordingVoice()
             showRecordingPopup = true
             recordingDurationSecs = 0
             voiceNoteTitle = ""
         } else {
-            Toast.makeText(context, "Permiso de micrófono denegado. Cargando simulación de audio.", Toast.LENGTH_LONG).show()
-            // Enable fully working simulation fallback for emulators
-            viewModel.startRecordingVoice()
-            showRecordingPopup = true
-            recordingDurationSecs = 0
-            voiceNoteTitle = ""
+            Toast.makeText(context, "Permiso de micrófono denegado para grabar notas.", Toast.LENGTH_LONG).show()
         }
     }
 
     // Effect for active recording duration counter
-    LaunchedEffect(viewModel.isRecording) {
-        if (viewModel.isRecording) {
-            while (viewModel.isRecording) {
+    LaunchedEffect(viewModel.isRecording, viewModel.isPaused) {
+        if (viewModel.isRecording && !viewModel.isPaused) {
+            while (viewModel.isRecording && !viewModel.isPaused) {
                 delay(1000L)
                 recordingDurationSecs += 1
             }
@@ -223,7 +221,6 @@ fun BibleApp(viewModel: BibleViewModel) {
                                     ) == PackageManager.PERMISSION_GRANTED
 
                                     if (hasPermission) {
-                                        viewModel.startRecordingVoice()
                                         showRecordingPopup = true
                                         recordingDurationSecs = 0
                                         voiceNoteTitle = ""
@@ -244,6 +241,7 @@ fun BibleApp(viewModel: BibleViewModel) {
                             FloatingActionButton(
                                 onClick = {
                                     expandableFabActive = false
+                                    editingNoteId = 0
                                     inputNoteTitle = ""
                                     inputNoteContent = ""
                                     inputLinkedScripture = ""
@@ -295,7 +293,20 @@ fun BibleApp(viewModel: BibleViewModel) {
                 when (screen) {
                     "inicio" -> HomeScreen(viewModel)
                     "biblia" -> BibleSelectorScreen(viewModel)
-                    "notas" -> NotesAndSavedQuotesScreen(viewModel)
+                    "notas" -> NotesAndSavedQuotesScreen(
+                        viewModel = viewModel,
+                        onNoteClick = { note ->
+                            noteToView = note
+                            showViewNoteDialog = true
+                        },
+                        onEditNote = { note ->
+                            editingNoteId = note.id
+                            inputNoteTitle = note.title
+                            inputNoteContent = note.content
+                            inputLinkedScripture = note.linkedScripture ?: ""
+                            showAddNoteDialog = true
+                        }
+                    )
                     "perfil" -> ProfileAndConfigScreen(viewModel)
                     "lectura" -> ReadingCanvasScreen(viewModel, onSurfaceColor)
                     "buscar" -> SearchAdvancedScreen(viewModel)
@@ -335,22 +346,28 @@ fun BibleApp(viewModel: BibleViewModel) {
                                 value = inputLinkedScripture,
                                 onValueChange = { inputLinkedScripture = it },
                                 label = { Text("Cita vinculada (ej. Juan 3:16)") },
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
+                                trailingIcon = {
+                                    IconButton(onClick = { showScripturePickerInNote = true }) {
+                                        Icon(Icons.Default.MenuBook, contentDescription = "Buscar en la Biblia", tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
                             )
                         }
                     },
                     confirmButton = {
                         Button(
                             onClick = {
-                                viewModel.addUserNote(
-                                    inputNoteTitle,
-                                    inputNoteContent,
-                                    inputLinkedScripture.ifBlank { null }
+                                viewModel.saveUserNote(
+                                    id = editingNoteId,
+                                    title = inputNoteTitle,
+                                    content = inputNoteContent,
+                                    linkedScripture = inputLinkedScripture.ifBlank { null }
                                 )
                                 showAddNoteDialog = false
                             }
                         ) {
-                            Text("Guardar Nota")
+                            Text(if (editingNoteId == 0) "Guardar Nota" else "Actualizar Nota")
                         }
                     },
                     dismissButton = {
@@ -361,10 +378,77 @@ fun BibleApp(viewModel: BibleViewModel) {
                 )
             }
 
+            // --- Note Viewing Dialog ---
+            if (showViewNoteDialog && noteToView != null) {
+                val note = noteToView!!
+                AlertDialog(
+                    onDismissRequest = { showViewNoteDialog = false },
+                    title = {
+                        Text(
+                            text = note.title,
+                            fontFamily = FontFamily.Serif,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    text = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = formatTimestamp(note.timestamp),
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = note.content,
+                                fontSize = 16.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (!note.linkedScripture.isNullOrBlank()) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                ) {
+                                    Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        text = note.linkedScripture,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showViewNoteDialog = false }) {
+                            Text("Cerrar")
+                        }
+                    }
+                )
+            }
+
+            // --- Scripture Picker for Notes ---
+            if (showScripturePickerInNote) {
+                ScripturePickerDialog(
+                    onDismiss = { showScripturePickerInNote = false },
+                    onScriptureSelected = { scripture ->
+                        inputLinkedScripture = scripture
+                        showScripturePickerInNote = false
+                    }
+                )
+            }
+
             // --- Recording Active Modal ---
             if (showRecordingPopup) {
                 AlertDialog(
-                    onDismissRequest = { /* Force explicit actions */ },
+                    onDismissRequest = { 
+                        if (!viewModel.isRecording) showRecordingPopup = false 
+                    },
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
@@ -372,11 +456,18 @@ fun BibleApp(viewModel: BibleViewModel) {
                                     .size(12.dp)
                                     .clip(CircleShape)
                                     .drawBehind {
-                                        drawCircle(Color.Red)
+                                        drawCircle(if (viewModel.isRecording && !viewModel.isPaused) Color.Red else Color.Gray)
                                     }
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Grabando Nota de Voz", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = when {
+                                    !viewModel.isRecording -> "Nueva Nota de Voz"
+                                    viewModel.isPaused -> "Grabación Pausada"
+                                    else -> "Grabando Nota de Voz"
+                                },
+                                fontWeight = FontWeight.SemiBold
+                            )
                         }
                     },
                     text = {
@@ -390,7 +481,8 @@ fun BibleApp(viewModel: BibleViewModel) {
                                 onValueChange = { voiceNoteTitle = it },
                                 label = { Text("Título de esta reflexión de voz") },
                                 placeholder = { Text("Reflexión matutina hoy...") },
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = !viewModel.isRecording
                             )
 
                             // Simulated recording wave animation / timer
@@ -408,7 +500,7 @@ fun BibleApp(viewModel: BibleViewModel) {
                                 Icon(
                                     Icons.Default.Mic,
                                     contentDescription = "Mic",
-                                    tint = Color.Red,
+                                    tint = if (viewModel.isRecording && !viewModel.isPaused) Color.Red else Color.Gray,
                                     modifier = Modifier.size(24.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -419,6 +511,41 @@ fun BibleApp(viewModel: BibleViewModel) {
                                     fontFamily = FontFamily.Monospace
                                 )
                             }
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                if (!viewModel.isRecording) {
+                                    Button(
+                                        onClick = { viewModel.startRecordingVoice() },
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Iniciar")
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = {
+                                            if (viewModel.isPaused) viewModel.resumeRecordingVoice()
+                                            else viewModel.pauseRecordingVoice()
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (viewModel.isPaused) MaterialTheme.colorScheme.primary else Color(0xFFFF9800)
+                                        )
+                                    ) {
+                                        Icon(
+                                            if (viewModel.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                                            contentDescription = null
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(if (viewModel.isPaused) "Reanudar" else "Pausar")
+                                    }
+                                }
+                            }
+
                             Text(
                                 "El archivo de audio se guardará de forma privada en el almacenamiento seguro de tu devocional.",
                                 fontSize = 11.sp,
@@ -429,6 +556,7 @@ fun BibleApp(viewModel: BibleViewModel) {
                     },
                     confirmButton = {
                         Button(
+                            enabled = viewModel.isRecording,
                             colors = ButtonDefaults.buttonColors(containerColor = Color.Red, contentColor = Color.White),
                             onClick = {
                                 viewModel.stopRecordingVoiceAndSave(voiceNoteTitle)
@@ -437,6 +565,19 @@ fun BibleApp(viewModel: BibleViewModel) {
                             }
                         ) {
                             Text("Detener y Guardar")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { 
+                                if (viewModel.isRecording) {
+                                    // Optionally ask to cancel or just stop without saving
+                                    viewModel.stopRecordingVoiceAndSave(voiceNoteTitle)
+                                }
+                                showRecordingPopup = false 
+                            }
+                        ) {
+                            Text("Cancelar")
                         }
                     }
                 )
@@ -1062,7 +1203,11 @@ fun Icon(imageVector: androidx.compose.ui.graphics.vector.ImageVector, contentDe
 // SCREEN 3: NOTES & BOOKMARKS (CITAS)
 // ==========================================
 @Composable
-fun NotesAndSavedQuotesScreen(viewModel: BibleViewModel) {
+fun NotesAndSavedQuotesScreen(
+    viewModel: BibleViewModel,
+    onNoteClick: (UserNote) -> Unit,
+    onEditNote: (UserNote) -> Unit
+) {
     val context = LocalContext.current
     var activeSubTab by remember { mutableStateOf("notas") } // notas, citas, voz
     val userNotesList by viewModel.userNotes.collectAsState()
@@ -1114,7 +1259,9 @@ fun NotesAndSavedQuotesScreen(viewModel: BibleViewModel) {
                             Card(
                                 shape = RoundedCornerShape(12.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onNoteClick(note) }
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
                                     Row(
@@ -1128,8 +1275,13 @@ fun NotesAndSavedQuotesScreen(viewModel: BibleViewModel) {
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
-                                        IconButton(onClick = { viewModel.deleteUserNote(note) }) {
-                                            Icon(Icons.Default.Delete, contentDescription = "Eliminar nota", tint = MaterialTheme.colorScheme.error)
+                                        Row {
+                                            IconButton(onClick = { onEditNote(note) }) {
+                                                Icon(Icons.Default.Edit, contentDescription = "Editar nota", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                            }
+                                            IconButton(onClick = { viewModel.deleteUserNote(note) }) {
+                                                Icon(Icons.Default.Delete, contentDescription = "Eliminar nota", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                                            }
                                         }
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
@@ -1150,11 +1302,37 @@ fun NotesAndSavedQuotesScreen(viewModel: BibleViewModel) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
                                             modifier = Modifier.clickable {
-                                                // Extract book name to navigate
-                                                val parts = note.linkedScripture.split(" ")
-                                                if (parts.isNotEmpty()) {
+                                                // Intelligent parsing for: "Book Chapter:Verse" or "Book Chapter"
+                                                val text = note.linkedScripture.trim()
+                                                // Find the last space which usually separates book name and chapter
+                                                val lastSpaceIndex = text.lastIndexOf(' ')
+                                                if (lastSpaceIndex != -1) {
+                                                    val bookName = text.substring(0, lastSpaceIndex).trim()
+                                                    val refPart = text.substring(lastSpaceIndex + 1).trim()
+                                                    
                                                     val matchedBook = BibleData.books.firstOrNull {
-                                                        it.name.lowercase().trim() == parts[0].lowercase().trim()
+                                                        it.name.lowercase() == bookName.lowercase()
+                                                    }
+                                                    
+                                                    if (matchedBook != null) {
+                                                        // Parse chapter and verse
+                                                        val chapter: Int
+                                                        var verse: Int? = null
+                                                        
+                                                        if (refPart.contains(':')) {
+                                                            val subParts = refPart.split(':')
+                                                            chapter = subParts[0].toIntOrNull() ?: 1
+                                                            verse = subParts[1].toIntOrNull()
+                                                        } else {
+                                                            chapter = refPart.toIntOrNull() ?: 1
+                                                        }
+                                                        
+                                                        viewModel.selectBookAndChapter(matchedBook, chapter, verse)
+                                                    }
+                                                } else {
+                                                    // Try matching full text as book name if no space
+                                                    val matchedBook = BibleData.books.firstOrNull {
+                                                        it.name.lowercase() == text.lowercase()
                                                     }
                                                     if (matchedBook != null) {
                                                         viewModel.selectBookAndChapter(matchedBook, 1)
@@ -1643,193 +1821,195 @@ fun ChapterContent(book: BibleBook, chapter: Int, viewModel: BibleViewModel, onS
     }
 
     val savedStates by viewModel.savedStates.collectAsState()
+    val scrollState = androidx.compose.foundation.lazy.rememberLazyListState()
 
     // Key to observe is saved state
     LaunchedEffect(book, chapter) {
         // Query bookmark status for verses so view updates automatically
         viewModel.checkVerseSavedStatus(book.name, chapter, "16")
+        
+        // Scroll to verse if target is set
+        viewModel.selectedVerse?.let { target ->
+            // Simple mapping: Header is index 0, verse 1 is index 1, etc.
+            // But we have Spacers and Box...
+            // Let's adjust the indices in LazyColumn
+            scrollState.scrollToItem(target) 
+        }
     }
 
-    Column(
+    LazyColumn(
+        state = scrollState,
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp)
     ) {
-        Spacer(modifier = Modifier.height(16.dp))
-
         // Scripture header
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "LIBRO DE " + book.name.uppercase(),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 2.sp,
-                color = MaterialTheme.colorScheme.primary,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Capítulo $chapter",
-                fontFamily = FontFamily.Serif,
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Medium,
-                color = onSurfaceColor,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            Box(
-                modifier = Modifier
-                    .width(64.dp)
-                    .height(2.dp)
-                    .background(MaterialTheme.colorScheme.primary)
-            )
+        item {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "LIBRO DE " + book.name.uppercase(),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Capítulo $chapter",
+                    fontFamily = FontFamily.Serif,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = onSurfaceColor,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Box(
+                    modifier = Modifier
+                        .width(64.dp)
+                        .height(2.dp)
+                        .background(MaterialTheme.colorScheme.primary)
+                )
+            }
         }
 
-        Spacer(modifier = Modifier.height(28.dp))
+        items(verses) { (verseNum, verseText) ->
+            // Check if this verse is JUAN 3:16 for visual spotlight
+            val isJuanThreeSixteen = (book.name.lowercase() == "juan" && chapter == 3 && verseNum == 16)
 
-        // Scripture Body
-        Column(
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            verses.forEach { (verseNum, verseText) ->
-                // Check if this verse is JUAN 3:16 for visual spotlight
-                val isJuanThreeSixteen = (book.name.lowercase() == "juan" && chapter == 3 && verseNum == 16)
-
-                if (isJuanThreeSixteen) {
-                    // Feature visual spotlight block
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f))
-                            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                            .padding(20.dp)
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "“" + verseText + "”",
-                                fontFamily = when(viewModel.readerFontFamilyName) {
-                                    "SansSerif" -> FontFamily.SansSerif
-                                    "Monospace" -> FontFamily.Monospace
-                                    else -> FontFamily.Serif
-                                },
-                                fontStyle = FontStyle.Italic,
-                                fontWeight = if (viewModel.readerIsBold) FontWeight.Bold else FontWeight.Normal,
-                                fontSize = (viewModel.readerFontSizeSp + 2).sp,
-                                lineHeight = ((viewModel.readerFontSizeSp + 2) * 1.55f).sp,
-                                textAlign = TextAlign.Center,
-                                color = onSurfaceColor
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "JUAN 3:16",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.primary,
-                                letterSpacing = 1.2.sp
-                            )
-                        }
-                    }
-                } else {
-                    // Standard inline verse
-                    val key = "${book.name}|$chapter|$verseNum"
-                    val isBookmarked = savedStates[key] == true
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                viewModel.toggleSaveQuote(
-                                    book.name,
-                                    chapter,
-                                    verseNum.toString(),
-                                    verseText
-                                )
-                                viewModel.checkVerseSavedStatus(book.name, chapter, verseNum.toString())
-                                Toast.makeText(
-                                    context,
-                                    if (!isBookmarked) "Versículo Guardado" else "Versículo Eliminado",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        // Gold superscript verse number
+            if (isJuanThreeSixteen) {
+                // Feature visual spotlight block
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f))
+                        .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .padding(20.dp)
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "$verseNum ",
-                            fontSize = (viewModel.readerFontSizeSp * 0.7f).sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(end = 6.dp, top = 2.dp)
-                        )
-
-                        Text(
-                            text = verseText,
+                            text = "“" + verseText + "”",
                             fontFamily = when(viewModel.readerFontFamilyName) {
                                 "SansSerif" -> FontFamily.SansSerif
                                 "Monospace" -> FontFamily.Monospace
                                 else -> FontFamily.Serif
                             },
+                            fontStyle = FontStyle.Italic,
                             fontWeight = if (viewModel.readerIsBold) FontWeight.Bold else FontWeight.Normal,
-                            fontSize = viewModel.readerFontSizeSp.sp,
-                            lineHeight = (viewModel.readerFontSizeSp * 1.5f).sp,
-                            color = onSurfaceColor,
-                            modifier = Modifier.weight(1f)
+                            fontSize = (viewModel.readerFontSizeSp + 2).sp,
+                            lineHeight = ((viewModel.readerFontSizeSp + 2) * 1.55f).sp,
+                            textAlign = TextAlign.Center,
+                            color = onSurfaceColor
                         )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "JUAN 3:16",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            letterSpacing = 1.2.sp
+                        )
+                    }
+                }
+            } else {
+                // Standard inline verse
+                val key = "${book.name}|$chapter|$verseNum"
+                val isBookmarked = savedStates[key] == true
 
-                        if (isBookmarked) {
-                            Icon(
-                                Icons.Default.Favorite,
-                                contentDescription = "Guardado",
-                                tint = Color.Red,
-                                modifier = Modifier
-                                    .size(16.dp)
-                                    .padding(start = 4.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            viewModel.toggleSaveQuote(
+                                book.name,
+                                chapter,
+                                verseNum.toString(),
+                                verseText
                             )
+                            viewModel.checkVerseSavedStatus(book.name, chapter, verseNum.toString())
+                            Toast.makeText(
+                                context,
+                                if (!isBookmarked) "Versículo Guardado" else "Versículo Eliminado",
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    // Gold superscript verse number
+                    Text(
+                        text = "$verseNum ",
+                        fontSize = (viewModel.readerFontSizeSp * 0.7f).sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(end = 6.dp, top = 2.dp)
+                    )
+
+                    Text(
+                        text = verseText,
+                        fontFamily = when(viewModel.readerFontFamilyName) {
+                            "SansSerif" -> FontFamily.SansSerif
+                            "Monospace" -> FontFamily.Monospace
+                            else -> FontFamily.Serif
+                        },
+                        fontWeight = if (viewModel.readerIsBold) FontWeight.Bold else FontWeight.Normal,
+                        fontSize = viewModel.readerFontSizeSp.sp,
+                        lineHeight = (viewModel.readerFontSizeSp * 1.5f).sp,
+                        color = onSurfaceColor,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    if (isBookmarked) {
+                        Icon(
+                            Icons.Default.Favorite,
+                            contentDescription = "Guardado",
+                            tint = Color.Red,
+                            modifier = Modifier
+                                .size(16.dp)
+                                .padding(start = 4.dp)
+                        )
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
-
         // Inter-chapter footer controls
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 24.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(
-                onClick = { viewModel.navigatePrevChapter() },
-                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 24.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = null)
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Anterior", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            }
+                TextButton(
+                    onClick = { viewModel.navigatePrevChapter() },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = null)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Anterior", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
 
-            TextButton(
-                onClick = { viewModel.navigateNextChapter() },
-                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
-            ) {
-                Text("Siguiente", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.width(4.dp))
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+                TextButton(
+                    onClick = { viewModel.navigateNextChapter() },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Text("Siguiente", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+                }
             }
         }
-        Spacer(modifier = Modifier.height(32.dp))
     }
 }
+
 
 
 // ==========================================
@@ -2099,7 +2279,7 @@ fun CreditsScreen(viewModel: BibleViewModel) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                 Text(
-                    text = "Versión 1.1.1",
+                    text = "Versión 1.1.2",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth(),
@@ -2212,6 +2392,124 @@ fun ChapterSelectionDialog(viewModel: BibleViewModel) {
     )
 }
 
+
+@Composable
+fun ScripturePickerDialog(onDismiss: () -> Unit, onScriptureSelected: (String) -> Unit) {
+    val context = LocalContext.current
+    var selectedBook by remember { mutableStateOf<BibleBook?>(null) }
+    var selectedChapter by remember { mutableStateOf<Int?>(null) }
+    var selectedVerse by remember { mutableStateOf<Int?>(null) }
+
+    val verseCount = remember(selectedBook, selectedChapter) {
+        if (selectedBook != null && selectedChapter != null) {
+            BibleData.getVerses(context, selectedBook!!.name, selectedChapter!!).size
+        } else 0
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = when {
+                    selectedBook == null -> "Seleccionar Libro"
+                    selectedChapter == null -> "Capítulo de ${selectedBook?.name}"
+                    selectedVerse == null -> "Versículo de ${selectedBook?.name} ${selectedChapter}"
+                    else -> "Confirmar Cita"
+                },
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Box(modifier = Modifier.heightIn(max = 400.dp)) {
+                when {
+                    selectedBook == null -> {
+                        LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                            items(BibleData.books) { book ->
+                                Text(
+                                    text = book.name,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { selectedBook = book }
+                                        .padding(16.dp),
+                                    fontSize = 16.sp
+                                )
+                            }
+                        }
+                    }
+                    selectedChapter == null -> {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(5),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(selectedBook?.chapters ?: 0) { index ->
+                                val ch = index + 1
+                                Box(
+                                    modifier = Modifier
+                                        .aspectRatio(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .clickable { selectedChapter = ch },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(ch.toString(), fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                    selectedVerse == null -> {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(5),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(verseCount) { index ->
+                                val v = index + 1
+                                Box(
+                                    modifier = Modifier
+                                        .aspectRatio(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .clickable { selectedVerse = v },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(v.toString(), fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                    else -> {
+                        Text(
+                            text = "¿Vincular ${selectedBook?.name} ${selectedChapter}:${selectedVerse}?",
+                            fontSize = 18.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (selectedBook != null && selectedChapter != null && selectedVerse != null) {
+                Button(onClick = { onScriptureSelected("${selectedBook?.name} ${selectedChapter}:${selectedVerse}") }) {
+                    Text("Seleccionar")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = {
+                when {
+                    selectedVerse != null -> selectedVerse = null
+                    selectedChapter != null -> selectedChapter = null
+                    selectedBook != null -> selectedBook = null
+                    else -> onDismiss()
+                }
+            }) {
+                Text(if (selectedBook == null) "Cancelar" else "Atrás")
+            }
+        }
+    )
+}
 
 // ==========================================
 // STRING / TIMING HELPERS

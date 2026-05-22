@@ -1,5 +1,11 @@
 # Changelog - Biblia Reina Valera 1960 Devocional
 
+## [1.1.2] - 2024-05-22
+### Added
+- **Edición de Notas:** Funcionalidad para editar notas existentes.
+- **Visualización de Notas:** Diálogo dedicado para leer notas completas con scroll.
+- **Vínculos de Versículos Mejorados:** El sistema ahora permite elegir libro, capítulo y versículo exacto, y se desplaza automáticamente al versículo al abrir la Biblia desde la nota.
+
 ## [1.1.1] - 2024-05-21
 ### Added
 - **Versión en Créditos:** Visualización de la versión actual de la App al final de la pantalla de créditos.

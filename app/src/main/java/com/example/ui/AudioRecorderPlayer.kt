@@ -64,6 +64,24 @@ class AudioRecorderPlayer(private val context: Context) {
         return durationSecs
     }
 
+    fun pauseRecording() {
+        try {
+            mediaRecorder?.pause()
+            Log.d("AudioRecorderPlayer", "Recording paused")
+        } catch (e: Exception) {
+            Log.e("AudioRecorderPlayer", "Error pausing recorder", e)
+        }
+    }
+
+    fun resumeRecording() {
+        try {
+            mediaRecorder?.resume()
+            Log.d("AudioRecorderPlayer", "Recording resumed")
+        } catch (e: Exception) {
+            Log.e("AudioRecorderPlayer", "Error resuming recorder", e)
+        }
+    }
+
     fun startPlaying(filePath: String, onCompletion: () -> Unit) {
         stopPlaying()
         try {
