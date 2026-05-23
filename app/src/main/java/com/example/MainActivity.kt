@@ -2310,7 +2310,7 @@ fun CreditsScreen(viewModel: BibleViewModel) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                 Text(
-                    text = "Versión 1.1.3",
+                    text = "Versión 1.1.4",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth(),

@@ -1,5 +1,9 @@
 # Changelog - Biblia Reina Valera 1960 Devocional
 
+## [1.1.4] - 2024-05-23
+### Fixed
+- **Splash Screen:** Corrección del logo estirado en la pantalla de lanzamiento mediante centrado automático.
+
 ## [1.1.3] - 2024-05-23
 ### Added
 - **Controles de Audio Manuales:** Botones de Iniciar, Pausar y Reanudar en la grabación de notas de voz.

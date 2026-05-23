@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Este archivo centra el logo sin estirarlo para la pantalla de lanzamiento -->
+    <item
+        android:gravity="center">
+        <bitmap
+            android:src="@drawable/app_logo"
+            android:gravity="center"
+            android:mipMap="true" />
+    </item>
+</layer-list>
