@@ -12,6 +12,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
@@ -64,6 +65,7 @@ import java.io.File
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
@@ -761,6 +763,35 @@ fun HomeScreen(viewModel: BibleViewModel) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp)
     ) {
+        // App Logo Header
+        item {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // We use a Box with background color or image
+                // Assuming the user saves the image as app_logo in drawables
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(id = R.drawable.app_logo),
+                    contentDescription = "Logo",
+                    modifier = Modifier
+                        .height(160.dp) // Solo definimos la altura
+                        .wrapContentWidth() // El ancho se ajusta solo para no achatar
+                        .clip(RoundedCornerShape(16.dp)),
+                    contentScale = ContentScale.Fit
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "REINA VALERA 1960",
+                    fontFamily = FontFamily.Serif,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    letterSpacing = 2.sp
+                )
+            }
+        }
+
         // Comforting Verse of the Day Card
         item {
             Card(
@@ -2279,7 +2310,7 @@ fun CreditsScreen(viewModel: BibleViewModel) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                 Text(
-                    text = "Versión 1.1.2",
+                    text = "Versión 1.1.3",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth(),

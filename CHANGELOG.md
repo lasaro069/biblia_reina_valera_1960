@@ -1,5 +1,10 @@
 # Changelog - Biblia Reina Valera 1960 Devocional
 
+## [1.1.3] - 2024-05-23
+### Added
+- **Controles de Audio Manuales:** Botones de Iniciar, Pausar y Reanudar en la grabación de notas de voz.
+- **Imagen de Marca:** Integración de nuevo logo oficial y pantalla de lanzamiento (Splash Screen) personalizada.
+
 ## [1.1.2] - 2024-05-22
 ### Added
 - **Edición de Notas:** Funcionalidad para editar notas existentes.
