@@ -16,3 +16,9 @@
 local.properties
 .env
 debug.keystore
+
+# Archivos ejecutables y salidas de release (.apk, .aab)
+*.apk
+*.aab
+/app/release/
+release/
