@@ -232,6 +232,9 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
     fun navigateTo(screen: String) {
         if (activeScreen != screen) {
             previousScreenStack.add(activeScreen)
+            if (previousScreenStack.size > 15) {
+                previousScreenStack.removeAt(0)
+            }
             activeScreen = screen
         }
     }
@@ -337,6 +340,11 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
             audioRecorderPlayer.stopPlaying()
             activePlayingNoteId = null
         } else {
+            val file = java.io.File(note.filePath)
+            if (!file.exists()) {
+                activePlayingNoteId = null
+                return
+            }
             activePlayingNoteId = note.id
             audioRecorderPlayer.startPlaying(note.filePath) {
                 activePlayingNoteId = null
@@ -372,6 +380,16 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteVoiceNote(voiceNote: VoiceNote) {
         viewModelScope.launch {
+            // Delete physical audio file from disk
+            try {
+                val file = java.io.File(voiceNote.filePath)
+                if (file.exists()) {
+                    file.delete()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            // Delete record from database
             repository.deleteVoiceNote(voiceNote)
         }
     }
