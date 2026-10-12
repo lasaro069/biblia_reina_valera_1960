@@ -800,6 +800,15 @@ fun HomeScreen(viewModel: BibleViewModel) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("verse_of_the_day_card")
+                    .clickable {
+                        val book = BibleData.books.firstOrNull { it.name == verseOfTheDay.first }
+                        if (book != null) {
+                            val ref = verseOfTheDay.second
+                            val chapter = if (ref.contains(':')) ref.split(':')[0].toIntOrNull() ?: 1 else ref.toIntOrNull() ?: 1
+                            val verse = if (ref.contains(':')) ref.split(':')[1].toIntOrNull() else null
+                            viewModel.selectBookAndChapter(book, chapter, verse)
+                        }
+                    }
             ) {
                 Column(
                     modifier = Modifier
@@ -913,7 +922,10 @@ fun HomeScreen(viewModel: BibleViewModel) {
                         subtitle = "",
                         icon = Icons.Default.EditNote,
                         modifier = Modifier.weight(1f),
-                        onClick = { viewModel.navigateTo("notas") }
+                        onClick = { 
+                            viewModel.activeNotesTab = "notas"
+                            viewModel.navigateTo("notas") 
+                        }
                     )
                     // Citas bíblicas guardadas
                     BentoCard(
@@ -922,7 +934,10 @@ fun HomeScreen(viewModel: BibleViewModel) {
                         icon = Icons.Default.Favorite,
                         iconTint = Color.Red,
                         modifier = Modifier.weight(1f),
-                        onClick = { viewModel.navigateTo("notas") }
+                        onClick = { 
+                            viewModel.activeNotesTab = "citas"
+                            viewModel.navigateTo("notas") 
+                        }
                     )
                 }
             }
@@ -965,18 +980,18 @@ fun HomeScreen(viewModel: BibleViewModel) {
                             letterSpacing = 1.2.sp
                         )
                         Text(
-                            text = "Plan: 30 Días de Paz",
+                            text = "Día ${viewModel.currentPlanDay + 1}: ${viewModel.readingPlanPaz[viewModel.currentPlanDay].third}",
                             fontFamily = FontFamily.Serif,
-                            fontSize = 22.sp,
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = Color.White,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         Button(
                             onClick = {
-                                // Jump directly to Salmo 23
-                                val book = BibleData.books.first { it.name == "Salmos" }
-                                viewModel.selectBookAndChapter(book, 23)
+                                viewModel.goToCurrentPlanDay()
                             },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -1002,24 +1017,27 @@ fun HomeScreen(viewModel: BibleViewModel) {
                     color = MaterialTheme.colorScheme.onBackground
                 )
 
-                RecentReadingRow(
-                    abbr = "GN",
-                    title = "Génesis 1:1-10",
-                    subtitle = "El principio del mundo",
-                    onClick = {
-                        val book = BibleData.books.first { it.name.lowercase() == "génesis" }
-                        viewModel.selectBookAndChapter(book, 1)
+                if (viewModel.recentReadings.isEmpty()) {
+                    Text(
+                        text = "Aún no tienes lecturas recientes.",
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    viewModel.recentReadings.forEach { reading ->
+                        RecentReadingRow(
+                            abbr = reading.bookName.take(2).uppercase(),
+                            title = "${reading.bookName} ${reading.chapter}",
+                            subtitle = "Última vez leído",
+                            onClick = {
+                                val book = BibleData.books.firstOrNull { it.name == reading.bookName }
+                                if (book != null) {
+                                    viewModel.selectBookAndChapter(book, reading.chapter)
+                                }
+                            }
+                        )
                     }
-                )
-                RecentReadingRow(
-                    abbr = "JN",
-                    title = "Juan 3:16",
-                    subtitle = "Porque de tal manera amó Dios al mundo...",
-                    onClick = {
-                        val book = BibleData.books.first { it.name.lowercase() == "juan" }
-                        viewModel.selectBookAndChapter(book, 3)
-                    }
-                )
+                }
             }
         }
     }
@@ -1240,7 +1258,7 @@ fun NotesAndSavedQuotesScreen(
     onEditNote: (UserNote) -> Unit
 ) {
     val context = LocalContext.current
-    var activeSubTab by remember { mutableStateOf("notas") } // notas, citas, voz
+    val activeSubTab = viewModel.activeNotesTab
     val userNotesList by viewModel.userNotes.collectAsState()
     val savedQuotesList by viewModel.savedQuotes.collectAsState()
     val voiceNotesList by viewModel.voiceNotes.collectAsState()
@@ -1264,9 +1282,9 @@ fun NotesAndSavedQuotesScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            SubTabPill("Notas", activeSubTab == "notas", Modifier.weight(1f)) { activeSubTab = "notas" }
-            SubTabPill("Voz 🎙️", activeSubTab == "voz", Modifier.weight(1f)) { activeSubTab = "voz" }
-            SubTabPill("Citas", activeSubTab == "citas", Modifier.weight(1f)) { activeSubTab = "citas" }
+            SubTabPill("Notas", activeSubTab == "notas", Modifier.weight(1f)) { viewModel.activeNotesTab = "notas" }
+            SubTabPill("Voz 🎙️", activeSubTab == "voz", Modifier.weight(1f)) { viewModel.activeNotesTab = "voz" }
+            SubTabPill("Citas", activeSubTab == "citas", Modifier.weight(1f)) { viewModel.activeNotesTab = "citas" }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -1499,7 +1517,14 @@ fun NotesAndSavedQuotesScreen(
                             Card(
                                 shape = RoundedCornerShape(12.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        val book = BibleData.books.firstOrNull { it.name == quote.bookName }
+                                        if (book != null) {
+                                            viewModel.selectBookAndChapter(book, quote.chapter)
+                                        }
+                                    }
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
                                     Row(
@@ -1816,22 +1841,37 @@ fun RowScope.ThemeGridButton(name: String, bgColor: Color, borderColor: Color, t
 fun ReadingCanvasScreen(viewModel: BibleViewModel, onSurfaceColor: Color) {
     val initialPage = remember { BibleData.getGlobalIndex(viewModel.selectedBook.name, viewModel.selectedChapter) }
     val pagerState = rememberPagerState(initialPage = initialPage) { BibleData.totalChapters }
+    
+    // Control de sincronización para evitar bucles infinitos durante animaciones programáticas
+    var isProgrammaticScroll by remember { mutableStateOf(false) }
 
-    // Sync pager to ViewModel (for external changes like chapter selection dialog)
+    // Sync pager to ViewModel (para cambios externos como diálogos de selección o pestañas)
     LaunchedEffect(viewModel.selectedBook, viewModel.selectedChapter) {
         val targetPage = BibleData.getGlobalIndex(viewModel.selectedBook.name, viewModel.selectedChapter)
         if (pagerState.currentPage != targetPage) {
-            pagerState.animateScrollToPage(targetPage)
+            try {
+                isProgrammaticScroll = true
+                // Si la distancia es grande, usamos scrollToPage para evitar atascos y animaciones excesivas
+                if (kotlin.math.abs(pagerState.currentPage - targetPage) > 3) {
+                    pagerState.scrollToPage(targetPage)
+                } else {
+                    pagerState.animateScrollToPage(targetPage)
+                }
+            } finally {
+                isProgrammaticScroll = false
+            }
         }
     }
 
-    // Sync ViewModel to Pager (for swipes)
+    // Sync ViewModel to Pager (para cuando el usuario desliza manualmente)
     LaunchedEffect(pagerState.currentPage) {
-        val (book, chapter) = BibleData.getBookAndChapterFromIndex(pagerState.currentPage)
-        // Update without triggering the LaunchedEffect above again if possible, 
-        // though animateScrollToPage handles it if we check the current page.
-        viewModel.selectedBook = book
-        viewModel.selectedChapter = chapter
+        if (!isProgrammaticScroll) {
+            val (book, chapter) = BibleData.getBookAndChapterFromIndex(pagerState.currentPage)
+            if (viewModel.selectedBook != book || viewModel.selectedChapter != chapter) {
+                viewModel.selectedBook = book
+                viewModel.selectedChapter = chapter
+            }
+        }
     }
 
     HorizontalPager(
@@ -1851,20 +1891,15 @@ fun ChapterContent(book: BibleBook, chapter: Int, viewModel: BibleViewModel, onS
         BibleData.getVerses(context, book.name, chapter)
     }
 
-    val savedStates by viewModel.savedStates.collectAsState()
+    val savedQuotesList by viewModel.savedQuotes.collectAsState()
     val scrollState = androidx.compose.foundation.lazy.rememberLazyListState()
 
-    // Key to observe is saved state
+    // Scroll al versículo si hay uno seleccionado (ej. desde búsqueda)
     LaunchedEffect(book, chapter) {
-        // Query bookmark status for verses so view updates automatically
-        viewModel.checkVerseSavedStatus(book.name, chapter, "16")
-        
-        // Scroll to verse if target is set
         viewModel.selectedVerse?.let { target ->
-            // Simple mapping: Header is index 0, verse 1 is index 1, etc.
-            // But we have Spacers and Box...
-            // Let's adjust the indices in LazyColumn
-            scrollState.scrollToItem(target) 
+            scrollState.animateScrollToItem(target)
+            // Limpiamos la selección para que no salte al cambiar de capítulo por swipe
+            viewModel.selectedVerse = null
         }
     }
 
@@ -1950,8 +1985,9 @@ fun ChapterContent(book: BibleBook, chapter: Int, viewModel: BibleViewModel, onS
                 }
             } else {
                 // Standard inline verse
-                val key = "${book.name}|$chapter|$verseNum"
-                val isBookmarked = savedStates[key] == true
+                val isBookmarked = savedQuotesList.any { 
+                    it.bookName == book.name && it.chapter == chapter && it.verseRange == verseNum.toString() 
+                }
 
                 Row(
                     modifier = Modifier
@@ -1963,7 +1999,6 @@ fun ChapterContent(book: BibleBook, chapter: Int, viewModel: BibleViewModel, onS
                                 verseNum.toString(),
                                 verseText
                             )
-                            viewModel.checkVerseSavedStatus(book.name, chapter, verseNum.toString())
                             Toast.makeText(
                                 context,
                                 if (!isBookmarked) "Versículo Guardado" else "Versículo Eliminado",
@@ -2037,6 +2072,26 @@ fun ChapterContent(book: BibleBook, chapter: Int, viewModel: BibleViewModel, onS
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
                 }
             }
+
+            // Plan Progression Shortcut
+            val plan = viewModel.readingPlanPaz[viewModel.currentPlanDay]
+            if (book.name == plan.first && chapter == plan.second) {
+                Button(
+                    onClick = { 
+                        viewModel.advancePlan()
+                        Toast.makeText(context, "¡Día del Plan Completado!", Toast.LENGTH_SHORT).show()
+                        viewModel.navigateTo("inicio")
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 24.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Completar Día ${viewModel.currentPlanDay + 1}")
+                }
+            }
         }
     }
 }
@@ -2049,20 +2104,10 @@ fun ChapterContent(book: BibleBook, chapter: Int, viewModel: BibleViewModel, onS
 @Composable
 fun SearchAdvancedScreen(viewModel: BibleViewModel) {
     val keyboardController = LocalSoftwareKeyboardController.current
-    var inputQuery by remember { mutableStateOf("") }
-    var filterShowingBook by remember { mutableStateOf<String?>(null) }
-    var matches by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
-    var isSearching by remember { mutableStateOf(false) }
 
     // Recompute results when query changes
-    LaunchedEffect(inputQuery, viewModel.selectedSearchScope) {
-        if (inputQuery.trim().length >= 2) {
-            isSearching = true
-            matches = viewModel.getSearchResults()
-            isSearching = false
-        } else {
-            matches = emptyList()
-        }
+    LaunchedEffect(viewModel.searchQuery, viewModel.selectedSearchScope) {
+        viewModel.performSearch()
     }
 
     Column(
@@ -2086,17 +2131,15 @@ fun SearchAdvancedScreen(viewModel: BibleViewModel) {
 
         // Search text-field
         OutlinedTextField(
-            value = inputQuery,
+            value = viewModel.searchQuery,
             onValueChange = {
-                inputQuery = it
                 viewModel.searchQuery = it
             },
             placeholder = { Text("Escribe para buscar... (ej. pastor, amor)") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
             trailingIcon = {
-                if (inputQuery.isNotEmpty()) {
+                if (viewModel.searchQuery.isNotEmpty()) {
                     IconButton(onClick = {
-                        inputQuery = ""
                         viewModel.searchQuery = ""
                     }) {
                         Icon(Icons.Default.Close, contentDescription = "Limpiar búsqueda")
@@ -2133,15 +2176,15 @@ fun SearchAdvancedScreen(viewModel: BibleViewModel) {
         Spacer(modifier = Modifier.height(16.dp))
 
         // Match counter
-        if (inputQuery.trim().length >= 2) {
+        if (viewModel.searchQuery.trim().length >= 2) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = if (isSearching) "Buscando coincidencias..." else "Se encontraron ${matches.size} concordancias",
+                    text = if (viewModel.isSearching) "Buscando coincidencias..." else "Se encontraron ${viewModel.searchMatches.size} concordancias",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold
                 )
-                if (isSearching) {
+                if (viewModel.isSearching) {
                     Spacer(modifier = Modifier.width(8.dp))
                     CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
                 }
@@ -2154,14 +2197,14 @@ fun SearchAdvancedScreen(viewModel: BibleViewModel) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
-            if (!isSearching && matches.isEmpty() && inputQuery.length >= 2) {
+            if (!viewModel.isSearching && viewModel.searchMatches.isEmpty() && viewModel.searchQuery.length >= 2) {
                 item {
                     EmptyPlaceholderState(
                         icon = Icons.Default.SearchOff,
                         text = "No se encontraron versículos que coincidan con la búsqueda.\nIntenta con otras palabras."
                     )
                 }
-            } else if (inputQuery.trim().length < 2) {
+            } else if (viewModel.searchQuery.trim().length < 2) {
                 item {
                     EmptyPlaceholderState(
                         icon = Icons.Default.AutoStories,
@@ -2169,7 +2212,7 @@ fun SearchAdvancedScreen(viewModel: BibleViewModel) {
                     )
                 }
             } else {
-                items(matches) { match ->
+                items(viewModel.searchMatches) { match ->
                     Card(
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -2205,6 +2248,7 @@ fun SearchAdvancedScreen(viewModel: BibleViewModel) {
     }
 }
 
+
 @Composable
 fun CreditsScreen(viewModel: BibleViewModel) {
     val context = LocalContext.current
@@ -2235,7 +2279,7 @@ fun CreditsScreen(viewModel: BibleViewModel) {
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = "Esta App fue desarrollada por Luis Santos en Colombia. Permite la navegación por los libros de la Biblia, guardado de notas, grabación de notas de audio para predicaciones y reflexión, marcador de pasajes bíblicos y búsqueda, completamente Offline.",
+                    text = "Esta App fue desarrollada por Luis Santos en Colombia. Permite la navegación por los libros de la Biblia, guardado de notas, grabación de notas de audio para prédicas y reflexiones, marcador de pasajes bíblicos y búsqueda, completamente Offline.",
                     fontSize = 15.sp,
                     lineHeight = 22.sp,
                     color = MaterialTheme.colorScheme.onSurface
@@ -2310,7 +2354,7 @@ fun CreditsScreen(viewModel: BibleViewModel) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                 Text(
-                    text = "Versión 1.1.4",
+                    text = "Versión ${com.example.BuildConfig.VERSION_NAME}",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth(),

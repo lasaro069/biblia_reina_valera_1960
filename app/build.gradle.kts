@@ -14,8 +14,8 @@ android {
     applicationId = "com.aistudio.reinavalera1960.bible"
     minSdk = 24
     targetSdk = 36
-    versionCode = 6
-    versionName = "1.1.4"
+    versionCode = 9
+    versionName = "1.1.7"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -55,6 +55,14 @@ android {
     buildConfig = true
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
+}
+
+androidComponents {
+  onVariants { variant ->
+    variant.outputs.forEach { output ->
+      output.outputFileName.set("Reina Valera 1960 v${android.defaultConfig.versionName}.apk")
+    }
+  }
 }
 
 // Configure the Secrets Gradle Plugin to use .env and .env.example files

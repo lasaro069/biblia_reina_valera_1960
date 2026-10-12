@@ -3,6 +3,7 @@ package com.example.ui
 import android.app.Application
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
@@ -82,9 +83,118 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
     var isSystemDarkTheme by mutableStateOf(false)
     var showChapterSelection by mutableStateOf(false)
 
+    // --- Notes Sub-Tab Selection ---
+    var activeNotesTab by mutableStateOf("notas") // "notas", "voz", "citas"
+
+    // --- Recent Readings Persistence ---
+    data class RecentReading(val bookName: String, val chapter: Int, val timestamp: Long)
+    
+    var recentReadings by mutableStateOf(loadRecentReadings())
+        private set
+
+    private fun loadRecentReadings(): List<RecentReading> {
+        val json = prefs.getString("recent_readings", "[]") ?: "[]"
+        return try {
+            val arr = org.json.JSONArray(json)
+            List(arr.length()) { i ->
+                val obj = arr.getJSONObject(i)
+                RecentReading(obj.getString("book"), obj.getInt("chapter"), obj.getLong("time"))
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    private fun saveRecentReadings(list: List<RecentReading>) {
+        val arr = org.json.JSONArray()
+        list.forEach { 
+            arr.put(org.json.JSONObject().apply {
+                put("book", it.bookName)
+                put("chapter", it.chapter)
+                put("time", it.timestamp)
+            })
+        }
+        prefs.edit().putString("recent_readings", arr.toString()).apply()
+    }
+
+    fun updateRecentReading(book: BibleBook, chapter: Int) {
+        val newList = recentReadings.toMutableList()
+        newList.removeAll { it.bookName == book.name && it.chapter == chapter }
+        newList.add(0, RecentReading(book.name, chapter, System.currentTimeMillis()))
+        val result = newList.take(2)
+        recentReadings = result
+        saveRecentReadings(result)
+    }
+
+    // --- Reading Plan: 30 Días de Paz ---
+    val readingPlanPaz = listOf(
+        Triple("Salmos", 23, "El Señor es mi pastor"),
+        Triple("Juan", 14, "No se turbe vuestro corazón"),
+        Triple("Filipenses", 4, "La paz de Dios"),
+        Triple("Salmos", 91, "Al abrigo del Altísimo"),
+        Triple("Mateo", 11, "Venid a mí y descansad"),
+        Triple("Isaías", 41, "No temas, yo estoy contigo"),
+        Triple("Juan", 16, "En el mundo tendréis aflicción"),
+        Triple("Salmos", 46, "Nuestro pronto auxilio"),
+        Triple("Romanos", 8, "Más que vencedores"),
+        Triple("Salmos", 121, "Mi auxilio viene del Señor"),
+        Triple("Isaías", 26, "Tú guardarás en completa paz"),
+        Triple("Salmos", 34, "Busqué a Jehová, y él me oyó"),
+        Triple("Mateo", 6, "No os afanéis por vuestra vida"),
+        Triple("1 Pedro", 5, "Echando toda vuestra ansiedad"),
+        Triple("Salmos", 4, "En paz me acostaré"),
+        Triple("Josué", 1, "Esfuérzate y sé valiente"),
+        Triple("Salmos", 27, "Jehová es mi luz y mi salvación"),
+        Triple("Juan", 10, "Mis ovejas oyen mi voz"),
+        Triple("Romanos", 15, "Y el Dios de esperanza os llene"),
+        Triple("Salmos", 37, "Encomienda a Jehová tu camino"),
+        Triple("Isaías", 40, "Los que esperan a Jehová"),
+        Triple("Mateo", 5, "Bienaventurados los que lloran"),
+        Triple("2 Corintios", 12, "Bástate mi gracia"),
+        Triple("Salmos", 103, "Bendice, alma mía, a Jehová"),
+        Triple("Filipenses", 1, "Estando persuadido de esto"),
+        Triple("Salmos", 139, "Oh Jehová, tú me has examinado"),
+        Triple("Proverbios", 3, "Fíate de Jehová"),
+        Triple("Hebreos", 11, "Es, pues, la fe"),
+        Triple("Apocalipsis", 21, "Enjugará Dios toda lágrima"),
+        Triple("Salmos", 150, "Todo lo que respira alabe a JAH")
+    )
+
+    var currentPlanDay by mutableIntStateOf(prefs.getInt("plan_paz_day", 0))
+        private set
+
+    fun advancePlan() {
+        if (currentPlanDay < readingPlanPaz.size - 1) {
+            currentPlanDay++
+            prefs.edit().putInt("plan_paz_day", currentPlanDay).apply()
+        }
+    }
+
+    fun goToCurrentPlanDay() {
+        val (bookName, chapter, _) = readingPlanPaz[currentPlanDay]
+        val book = BibleData.books.firstOrNull { it.name == bookName }
+        if (book != null) {
+            selectBookAndChapter(book, chapter)
+        }
+    }
+
     // --- Advanced Search State ---
     var searchQuery by mutableStateOf("")
     var selectedSearchScope by mutableStateOf("Toda la Biblia") // Toda la Biblia, Antiguo Testamento, Nuevo Testamento, Libro Actual
+    var searchMatches by mutableStateOf<List<SearchResult>>(emptyList())
+    var isSearching by mutableStateOf(false)
+
+    fun performSearch() {
+        val query = searchQuery.trim()
+        if (query.length < 2) {
+            searchMatches = emptyList()
+            return
+        }
+
+        viewModelScope.launch {
+            isSearching = true
+            searchMatches = getSearchResults()
+            isSearching = false
+        }
+    }
     
     // --- Bible Selector State ---
     var isNewTestamentSelected by mutableStateOf(false)
@@ -139,6 +249,7 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
         selectedBook = book
         selectedChapter = chapter.coerceIn(1, book.chapters)
         selectedVerse = verse
+        updateRecentReading(book, selectedChapter)
         navigateTo("lectura")
     }
 
@@ -155,6 +266,7 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
                 selectedChapter = 1
             }
         }
+        updateRecentReading(selectedBook, selectedChapter)
     }
 
     fun navigatePrevChapter() {
@@ -170,6 +282,7 @@ class BibleViewModel(application: Application) : AndroidViewModel(application) {
                 selectedChapter = selectedBook.chapters
             }
         }
+        updateRecentReading(selectedBook, selectedChapter)
     }
 
     // --- Audio Operations ---
